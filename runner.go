@@ -9,17 +9,13 @@ import (
 )
 
 type Runner struct {
-	signals  chan os.Signal
 	state    uint32
 	factory  func() Runnable
 	instance Runnable
 }
 
 func NewRunner(factory func() Runnable) *Runner {
-	return &Runner{
-		factory: factory,
-		signals: make(chan os.Signal, 16),
-	}
+	return &Runner{ factory: factory }
 }
 
 func (this *Runner) Start() {
@@ -28,13 +24,18 @@ func (this *Runner) Start() {
 	}
 
 	go func() {
-		signal.Notify(this.signals, os.Interrupt)
-		fmt.Printf("\nReceived shutdown signal [%s]\n", <-this.signals)
+		signals := make(chan os.Signal, 16)
+		signal.Notify(signals, os.Interrupt)
+
+		fmt.Printf("\nReceived shutdown signal [%s]\n", <-signals)
+		close(signals)
 		this.Stop()
+
+		signal.Stop(signals)
 	}()
 
 	go func() {
-		sighup := make(chan os.Signal, 2)
+		sighup := make(chan os.Signal, 16)
 		signal.Notify(sighup, syscall.SIGHUP)
 
 		for item := range sighup {
@@ -48,9 +49,6 @@ func (this *Runner) Start() {
 		this.instance.Initialize()
 		this.instance.Listen()
 	}
-
-	signal.Stop(this.signals)
-	close(this.signals)
 }
 
 func (this *Runner) isStarted() bool {
