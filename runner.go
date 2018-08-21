@@ -18,20 +18,20 @@ func NewRunner(factory func() Runnable) *Runner {
 	return &Runner{ factory: factory }
 }
 
-func (this *Runner) Start() {
+func (this *Runner) Start() error {
 	if !atomic.CompareAndSwapUint32(&this.state, 0, 1) {
 		return
 	}
 
 	go func() {
-		signals := make(chan os.Signal, 16)
-		signal.Notify(signals, os.Interrupt)
+		terminate := make(chan os.Signal, 16)
+		signal.Notify(terminate, os.Interrupt)
 
-		fmt.Printf("\nReceived shutdown signal [%s]\n", <-signals)
-		close(signals)
+		fmt.Printf("\nReceived shutdown signal [%s]\n", <-terminate)
+		close(terminate)
 		this.Stop()
 
-		signal.Stop(signals)
+		signal.Stop(terminate)
 	}()
 
 	go func() {
@@ -46,9 +46,13 @@ func (this *Runner) Start() {
 
 	for this.isStarted() {
 		this.instance = this.factory()
-		this.instance.Initialize()
+		err := this.instance.Initialize()
+		if err != nil {
+			return err
+		}
 		this.instance.Listen()
 	}
+	return nil
 }
 
 func (this *Runner) isStarted() bool {
