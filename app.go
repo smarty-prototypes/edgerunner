@@ -9,15 +9,14 @@ type SampleApp struct {
 	waiter *sync.WaitGroup
 }
 
-func NewApp() Runnable {
+func NewApp() Task {
 	waiter := &sync.WaitGroup{}
 	waiter.Add(1)
 
-	return &SampleApp{
-		waiter: waiter,
-	}
+	return &SampleApp{waiter: waiter}
 }
-func (this *SampleApp) Initialize() error {
+
+func (this *SampleApp) Init() error {
 	fmt.Println("Initializing...")
 	return nil
 }
@@ -29,7 +28,4 @@ func (this *SampleApp) Close() error {
 	fmt.Println("Closing...")
 	this.waiter.Done()
 	return nil
-}
-func (this *SampleApp) Concurrency() int {
-	return -1
 }

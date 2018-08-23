@@ -1,70 +1,101 @@
 package main
 
 import (
-	"fmt"
-	"os"
-	"os/signal"
-	"sync/atomic"
-	"syscall"
+	"sync"
 )
 
 type Runner struct {
-	state    uint32
-	factory  func() Runnable
-	instance Runnable
+	mutex   *sync.Mutex
+	signals chan interface{}
+	factory func() Task
+	active  []Task
 }
 
-func NewRunner(factory func() Runnable) *Runner {
-	return &Runner{ factory: factory }
+func NewRunner(factory func() Task) *Runner {
+	return &Runner{
+		mutex:   &sync.Mutex{},
+		factory: factory,
+	}
 }
 
-func (this *Runner) Start() error {
-	if !atomic.CompareAndSwapUint32(&this.state, 0, 1) {
+func (this *Runner) Start() {
+	if !this.tryStart() {
 		return
 	}
 
-	go func() {
-		terminate := make(chan os.Signal, 16)
-		signal.Notify(terminate, os.Interrupt)
+	for this.isStarted() {
+		instance := this.newTask()
+		instance.Init()
+		instance.Listen()
+	}
+}
+func (this *Runner) Stop() {
+	if !this.isStarted() {
+		return
+	}
 
-		fmt.Printf("\nReceived shutdown signal [%s]\n", <-terminate)
-		close(terminate)
-		this.Stop()
+	this.mutex.Lock()
+	defer this.mutex.Unlock()
+	this.sendSignal()
+	close(this.signals)
+	this.signals = nil
+}
+func (this *Runner) Reload() {
+	this.mutex.Lock()
+	defer this.mutex.Unlock()
+	this.sendSignal()
+}
 
-		signal.Stop(terminate)
-	}()
+func (this *Runner) newTask() Task {
+	this.mutex.Lock()
+	defer this.mutex.Unlock()
 
-	go func() {
-		sighup := make(chan os.Signal, 16)
-		signal.Notify(sighup, syscall.SIGHUP)
+	instance := this.factory()
+	this.active = append(this.active, instance)
+	return instance
+}
+func (this *Runner) sendSignal() {
+	if this.signals == nil {
+		return
+	}
 
-		for item := range sighup {
-			fmt.Printf("\nReceived reload signal [%s]\n", item)
+	select {
+	case this.signals <- nil: // try and send a signal if the channel can hold it
+	default:
+	}
+}
+func (this *Runner) tryStart() bool {
+	this.mutex.Lock()
+	defer this.mutex.Unlock()
+
+	if this.signals != nil {
+		return false // already created and running, don't do it again
+	}
+
+	// signal needs to be created and watched
+	this.signals = make(chan interface{}, 4)
+	go this.watch(this.signals)
+	return true
+}
+func (this *Runner) watch(signals <-chan interface{}) {
+	for range signals {
+		if len(signals) == 0 {
 			this.closeActive()
 		}
-	}()
-
-	for this.isStarted() {
-		this.instance = this.factory()
-		err := this.instance.Initialize()
-		if err != nil {
-			return err
-		}
-		this.instance.Listen()
-	}
-	return nil
-}
-
-func (this *Runner) isStarted() bool {
-	return atomic.LoadUint32(&this.state) == 1
-}
-
-func (this *Runner) Stop() {
-	if atomic.CompareAndSwapUint32(&this.state, 1, 0) {
-		this.closeActive()
 	}
 }
-
 func (this *Runner) closeActive() {
-	this.instance.Close()
+	this.mutex.Lock()
+	defer this.mutex.Unlock()
+
+	for _, item := range this.active {
+		item.Close()
+	}
+
+	this.active = nil
+}
+func (this *Runner) isStarted() bool {
+	this.mutex.Lock()
+	defer this.mutex.Unlock()
+	return this.signals != nil
 }
