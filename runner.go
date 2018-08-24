@@ -1,57 +1,27 @@
 package main
 
-import (
-	"sync"
-)
-
-// TODO: put all complexity of mutex lock/unlock, etc.
-// behind another instance
-// make signal watcher more complex and have it return a struct
-// that has a Continue() bool func on it...
-
 type Runner struct {
-	factory SchedulerFactory
-	signals chan interface{}
-	mutex   *sync.Mutex
+	factory  SchedulerFactory
+	signaler Signaler
 }
 
-func NewRunner(factory SchedulerFactory) *Runner {
-	return &Runner{factory: factory, mutex: &sync.Mutex{}}
+func NewRunner(factory SchedulerFactory, signaler Signaler) *Runner {
+	return &Runner{factory: factory, signaler: signaler}
 }
 
 func (this *Runner) Start() {
-	watcher := this.start()
-	scheduler := this.factory(watcher)
+	// TODO: you can only call this once until stop is called; it's no-op after Start is called.
+	reader := this.signaler.Start()
+	scheduler := this.factory(reader)
 	scheduler.Schedule()
 
 	this.Stop() // in case schedule exits without stop being called
 }
-func (this *Runner) start() SignalReader {
-	this.mutex.Lock()
-	defer this.mutex.Unlock()
-
-	if this.signals == nil {
-		this.signals = make(chan interface{}, 2)
-	}
-
-	return NewChannelWatcher(this.signals)
-}
 
 func (this *Runner) Stop() {
-	this.mutex.Lock()
-	defer this.mutex.Unlock()
-
-	if this.signals != nil {
-		close(this.signals)
-		this.signals = nil
-	}
+	this.signaler.Stop()
 }
 
-func (this *Runner) Reload() {
-	this.mutex.Lock()
-	defer this.mutex.Unlock()
-
-	if this.signals != nil && len(this.signals) == 0 {
-		this.signals <- nil
-	}
+func (this *Runner) Reload() bool {
+	return this.signaler.Signal()
 }

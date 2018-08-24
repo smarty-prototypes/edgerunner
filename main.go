@@ -11,7 +11,8 @@ import (
 )
 
 func main() {
-	runner := NewRunner(newScheduler)
+	signaler := NewChannelSignaler()
+	runner := NewRunner(newScheduler, signaler)
 
 	go func() {
 		signals := make(chan os.Signal, 16)
