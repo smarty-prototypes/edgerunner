@@ -3,6 +3,7 @@ package main
 type Runner struct {
 	factory  SchedulerFactory
 	signaler Signaler
+	running  bool
 }
 
 func NewRunner(factory SchedulerFactory, signaler Signaler) *Runner {
@@ -10,12 +11,16 @@ func NewRunner(factory SchedulerFactory, signaler Signaler) *Runner {
 }
 
 func (this *Runner) Start() {
-	// TODO: you can only call this once until stop is called; it's no-op after Start is called.
+	if this.running {
+		return
+	}
+	this.running = true
 	reader := this.signaler.Start()
 	scheduler := this.factory(reader)
 	scheduler.Schedule()
 
 	this.Stop() // in case schedule exits without stop being called
+	this.running = false
 }
 
 func (this *Runner) Stop() {

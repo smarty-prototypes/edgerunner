@@ -35,6 +35,7 @@ func main() {
 
 func newScheduler(reader SignalReader) Scheduler {
 	return NewSerialScheduler(reader, NewSimpleTask)
+	//return NewConcurrentScheduler(reader, NewSimpleTask)
 }
 
 type SimpleTask struct {
