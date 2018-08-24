@@ -32,8 +32,8 @@ func main() {
 	runner.Start()
 }
 
-func newScheduler(signals <-chan interface{}) Scheduler {
-	return NewSerialScheduler(signals, NewSimpleTask)
+func newScheduler(reader SignalReader) Scheduler {
+	return NewSerialScheduler(reader, NewSimpleTask)
 }
 
 type SimpleTask struct {

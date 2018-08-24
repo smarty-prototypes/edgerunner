@@ -1,71 +1,57 @@
 package main
 
-import "sync"
+import (
+	"sync"
+)
+
+// TODO: put all complexity of mutex lock/unlock, etc.
+// behind another instance
+// make signal watcher more complex and have it return a struct
+// that has a Continue() bool func on it...
 
 type Runner struct {
-	mutex   *sync.Mutex
-	waiter  *sync.WaitGroup
-	channel chan interface{}
 	factory SchedulerFactory
+	signals chan interface{}
+	mutex   *sync.Mutex
 }
 
 func NewRunner(factory SchedulerFactory) *Runner {
-	return &Runner{
-		mutex:   &sync.Mutex{},
-		waiter:  &sync.WaitGroup{},
-		factory: factory,
-	}
+	return &Runner{factory: factory, mutex: &sync.Mutex{}}
 }
 
 func (this *Runner) Start() {
-	this.start()
-	this.waiter.Wait()
+	watcher := this.start()
+	scheduler := this.factory(watcher)
+	scheduler.Schedule()
+
+	this.Stop() // in case schedule exits without stop being called
 }
-func (this *Runner) start() {
+func (this *Runner) start() SignalReader {
 	this.mutex.Lock()
 	defer this.mutex.Unlock()
-	if this.channel != nil {
-		return
+
+	if this.signals == nil {
+		this.signals = make(chan interface{}, 2)
 	}
 
-	this.waiter.Add(1)
-	this.channel = make(chan interface{}, 2)
-	channel := this.channel
-	go this.schedule(channel) // use local copy for closure operation
-}
-func (this *Runner) schedule(channel <-chan interface{}) {
-	scheduler := this.factory(channel)
-	scheduler.Schedule()
-	this.waiter.Done()
+	return NewChannelWatcher(this.signals)
 }
 
 func (this *Runner) Stop() {
 	this.mutex.Lock()
 	defer this.mutex.Unlock()
 
-	if this.channel == nil {
-		return
+	if this.signals != nil {
+		close(this.signals)
+		this.signals = nil
 	}
-
-	close(this.channel)
-	this.channel = nil
 }
 
 func (this *Runner) Reload() {
 	this.mutex.Lock()
 	defer this.mutex.Unlock()
 
-	if this.channel == nil {
-		return // we're stopped
-	}
-
-	if len(this.channel) > 0 {
-		return // the channel already has a reload signal on it
-	}
-
-	select {
-	case this.channel <- nil: // send the reload signal
-	default:
-		// the channel is full, there's already a reload signal on it
+	if this.signals != nil && len(this.signals) == 0 {
+		this.signals <- nil
 	}
 }

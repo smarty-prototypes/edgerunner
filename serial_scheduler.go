@@ -1,18 +1,19 @@
 package main
 
-import "sync"
+import (
+	"sync/atomic"
+)
 
 type SerialScheduler struct {
-	signals <-chan interface{}
+	reader  SignalReader
 	factory TaskFactory
-	waiter  *sync.WaitGroup
+	again   uint32
 }
 
-func NewSerialScheduler(signals <-chan interface{}, factory TaskFactory) *SerialScheduler {
+func NewSerialScheduler(reader SignalReader, factory TaskFactory) *SerialScheduler {
 	return &SerialScheduler{
-		signals: signals,
+		reader:  reader,
 		factory: factory,
-		waiter:  &sync.WaitGroup{},
 	}
 }
 
@@ -22,31 +23,28 @@ func (this *SerialScheduler) Schedule() {
 }
 
 func (this *SerialScheduler) scheduleTask() bool {
-	this.waiter.Add(1)
 	task := this.factory()
+	go this.watchSignal(task)
+	task.Init()   // TODO: if error
+	task.Listen() // we only schedule again if listen exits correctly
 
-	go this.runTask(task)
-	defer this.closeTask(task)
-
-	return this.readSignal()
+	return this.canScheduleAgain()
 }
 
-func (this *SerialScheduler) runTask(task Task) {
-	task.Init()
-	task.Listen()
-
-	this.waiter.Done()
-}
-
-func (this *SerialScheduler) closeTask(task Task) {
+func (this *SerialScheduler) watchSignal(task Task) {
+	this.scheduleAgain(this.reader.Read())
 	task.Close()
-
-	this.waiter.Wait()
 }
 
-func (this *SerialScheduler) readSignal() (ok bool) {
-//	for len(this.signals) > 0 {
-		_, ok = <-this.signals
-//	}
-	return ok
+func (this *SerialScheduler) canScheduleAgain() bool {
+	defer atomic.StoreUint32(&this.again, 0) // reset state
+	return atomic.LoadUint32(&this.again) == 1
+}
+
+func (this *SerialScheduler) scheduleAgain(again bool) {
+	if again {
+		atomic.StoreUint32(&this.again, 1)
+	} else {
+		atomic.StoreUint32(&this.again, 0)
+	}
 }

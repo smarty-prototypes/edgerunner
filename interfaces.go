@@ -11,5 +11,9 @@ type Scheduler interface {
 	Schedule()
 }
 
+type SignalReader interface {
+	Read() bool
+}
+
 type TaskFactory func() Task
-type SchedulerFactory func(<-chan interface{}) Scheduler
+type SchedulerFactory func(SignalReader) Scheduler
