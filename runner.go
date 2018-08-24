@@ -1,101 +1,71 @@
 package main
 
-import (
-	"sync"
-)
+import "sync"
 
 type Runner struct {
 	mutex   *sync.Mutex
-	signals chan interface{}
-	factory func() Task
-	active  []Task
+	waiter  *sync.WaitGroup
+	channel chan interface{}
+	factory SchedulerFactory
 }
 
-func NewRunner(factory func() Task) *Runner {
+func NewRunner(factory SchedulerFactory) *Runner {
 	return &Runner{
 		mutex:   &sync.Mutex{},
+		waiter:  &sync.WaitGroup{},
 		factory: factory,
 	}
 }
 
 func (this *Runner) Start() {
-	if !this.tryStart() {
-		return
-	}
-
-	for this.isStarted() {
-		instance := this.newTask()
-		instance.Init()
-		instance.Listen()
-	}
+	this.start()
+	this.waiter.Wait()
 }
-func (this *Runner) Stop() {
-	if !this.isStarted() {
-		return
-	}
-
+func (this *Runner) start() {
 	this.mutex.Lock()
 	defer this.mutex.Unlock()
-	this.sendSignal()
-	close(this.signals)
-	this.signals = nil
+	if this.channel != nil {
+		return
+	}
+
+	this.waiter.Add(1)
+	this.channel = make(chan interface{}, 2)
+	channel := this.channel
+	go this.schedule(channel) // use local copy for closure operation
 }
+func (this *Runner) schedule(channel <-chan interface{}) {
+	scheduler := this.factory(channel)
+	scheduler.Schedule()
+	this.waiter.Done()
+}
+
+func (this *Runner) Stop() {
+	this.mutex.Lock()
+	defer this.mutex.Unlock()
+
+	if this.channel == nil {
+		return
+	}
+
+	close(this.channel)
+	this.channel = nil
+}
+
 func (this *Runner) Reload() {
 	this.mutex.Lock()
 	defer this.mutex.Unlock()
-	this.sendSignal()
-}
 
-func (this *Runner) newTask() Task {
-	this.mutex.Lock()
-	defer this.mutex.Unlock()
+	if this.channel == nil {
+		return // we're stopped
+	}
 
-	instance := this.factory()
-	this.active = append(this.active, instance)
-	return instance
-}
-func (this *Runner) sendSignal() {
-	if this.signals == nil {
-		return
+	if len(this.channel) > 0 {
+		return // the channel already has a reload signal on it
 	}
 
 	select {
-	case this.signals <- nil: // try and send a signal if the channel can hold it
+	case this.channel <- nil: // send the reload signal
 	default:
+		// the channel is full, there's already a reload signal on it
 	}
-}
-func (this *Runner) tryStart() bool {
-	this.mutex.Lock()
-	defer this.mutex.Unlock()
-
-	if this.signals != nil {
-		return false // already created and running, don't do it again
-	}
-
-	// signal needs to be created and watched
-	this.signals = make(chan interface{}, 4)
-	go this.watch(this.signals)
-	return true
-}
-func (this *Runner) watch(signals <-chan interface{}) {
-	for range signals {
-		if len(signals) == 0 {
-			this.closeActive()
-		}
-	}
-}
-func (this *Runner) closeActive() {
-	this.mutex.Lock()
-	defer this.mutex.Unlock()
-
-	for _, item := range this.active {
-		item.Close()
-	}
-
-	this.active = nil
-}
-func (this *Runner) isStarted() bool {
-	this.mutex.Lock()
-	defer this.mutex.Unlock()
-	return this.signals != nil
 }
