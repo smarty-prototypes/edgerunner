@@ -1,4 +1,4 @@
-package main
+package edgerunner
 
 type Runner struct {
 	factory  SchedulerFactory
@@ -10,15 +10,11 @@ func NewRunner(factory SchedulerFactory, signaler Signaler) *Runner {
 }
 
 func (this *Runner) Start() {
-	reader, started := this.signaler.Start()
-	if !started {
-		return
+	if reader, started := this.signaler.Start(); started {
+		scheduler := this.factory(reader)
+		scheduler.Schedule()
+		this.signaler.Stop()
 	}
-
-	scheduler := this.factory(reader)
-	scheduler.Schedule()
-
-	this.Stop() // in case schedule exits without stop being called
 }
 
 func (this *Runner) Stop() {

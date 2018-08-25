@@ -8,11 +8,13 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
+
+	"github.com/smartystreets/edgerunner"
 )
 
 func main() {
-	signaler := NewChannelSignaler()
-	runner := NewRunner(newScheduler, signaler)
+	signaler := edgerunner.NewChannelSignaler()
+	runner := edgerunner.NewRunner(newScheduler, signaler)
 
 	go func() {
 		signals := make(chan os.Signal, 16)
@@ -33,9 +35,8 @@ func main() {
 	runner.Start()
 }
 
-func newScheduler(reader SignalReader) Scheduler {
-	return NewSerialScheduler(reader, NewSimpleTask)
-	//return NewConcurrentScheduler(reader, NewSimpleTask)
+func newScheduler(reader edgerunner.SignalReader) edgerunner.Scheduler {
+	return edgerunner.NewSerialScheduler(reader, NewSimpleTask)
 }
 
 type SimpleTask struct {
@@ -45,7 +46,7 @@ type SimpleTask struct {
 
 var counter uint32
 
-func NewSimpleTask() Task {
+func NewSimpleTask() edgerunner.Task {
 	id := atomic.AddUint32(&counter, 1)
 	return &SimpleTask{id: id, waiter: &sync.WaitGroup{}}
 }
