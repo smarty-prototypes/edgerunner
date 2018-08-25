@@ -1,16 +1,14 @@
 package edgerunner
 
-import (
-	"sync/atomic"
-)
+import "sync/atomic"
 
 type SerialScheduler struct {
-	reader  SignalReader
+	reader  Reader
 	factory TaskFactory
 	again   uint32
 }
 
-func NewSerialScheduler(reader SignalReader, factory TaskFactory) *SerialScheduler {
+func NewSerialScheduler(reader Reader, factory TaskFactory) *SerialScheduler {
 	return &SerialScheduler{
 		reader:  reader,
 		factory: factory,

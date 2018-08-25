@@ -1,12 +1,12 @@
 package edgerunner
 
 type Runner struct {
-	factory  SchedulerFactory
 	signaler Signaler
+	factory  SchedulerFactory
 }
 
-func NewRunner(factory SchedulerFactory, signaler Signaler) *Runner {
-	return &Runner{factory: factory, signaler: signaler}
+func NewRunner(signaler Signaler, factory SchedulerFactory) *Runner {
+	return &Runner{signaler: signaler, factory: factory,}
 }
 
 func (this *Runner) Start() {

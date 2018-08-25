@@ -14,7 +14,7 @@ import (
 
 func main() {
 	signaler := edgerunner.NewChannelSignaler()
-	runner := edgerunner.NewRunner(newScheduler, signaler)
+	runner := edgerunner.NewRunner(signaler, newScheduler)
 
 	go func() {
 		signals := make(chan os.Signal, 16)
@@ -35,7 +35,7 @@ func main() {
 	runner.Start()
 }
 
-func newScheduler(reader edgerunner.SignalReader) edgerunner.Scheduler {
+func newScheduler(reader edgerunner.Reader) edgerunner.Scheduler {
 	return edgerunner.NewSerialScheduler(reader, NewSimpleTask)
 }
 

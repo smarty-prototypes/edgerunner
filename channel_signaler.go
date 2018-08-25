@@ -11,7 +11,7 @@ func NewChannelSignaler() *ChannelSignaler {
 	return &ChannelSignaler{mutex: &sync.Mutex{}}
 }
 
-func (this *ChannelSignaler) Start() (SignalReader, bool) {
+func (this *ChannelSignaler) Start() (Reader, bool) {
 	this.mutex.Lock()
 	defer this.mutex.Unlock()
 

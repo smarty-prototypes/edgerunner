@@ -1,25 +1,28 @@
 package edgerunner
 
-import "io"
+type (
+	Task interface {
+		Init() error
+		Listen()
+		Close() error
+	}
+	TaskFactory func() Task
+)
 
-type Task interface {
-	Init() error
-	Listen()
-	io.Closer
-}
-type Scheduler interface {
-	Schedule()
-}
+type (
+	Scheduler interface {
+		Schedule()
+	}
+	SchedulerFactory func(Reader) Scheduler
+)
 
-type Signaler interface {
-	Start() (SignalReader, bool)
-	Stop()
-	Signal() bool
-}
-
-type SignalReader interface {
-	Read() bool
-}
-
-type TaskFactory func() Task
-type SchedulerFactory func(SignalReader) Scheduler
+type (
+	Signaler interface {
+		Start() (Reader, bool)
+		Stop()
+		Signal() bool
+	}
+	Reader interface {
+		Read() bool
+	}
+)
