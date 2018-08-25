@@ -38,7 +38,7 @@ func (this *ChannelSignaler) Signal() bool {
 		return false
 	}
 
-	if len(this.signals) > 0{
+	if len(this.signals) > 0 {
 		return true // act like we received a signal but we really didn't
 	}
 

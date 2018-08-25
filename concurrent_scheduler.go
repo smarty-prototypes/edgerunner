@@ -17,7 +17,7 @@ func NewConcurrentScheduler(reader SignalReader, factory TaskFactory) *Concurren
 	return &ConcurrentScheduler{
 		reader:  reader,
 		factory: factory,
-		signal: &sync.WaitGroup{},
+		signal:  &sync.WaitGroup{},
 	}
 }
 
@@ -37,7 +37,7 @@ func (this *ConcurrentScheduler) Schedule() {
 func (this *ConcurrentScheduler) scheduleTask() bool {
 	task := this.factory()
 	go this.watchSignal(task)
-	task.Init()   // TODO: if error
+	task.Init() // TODO: if error
 
 	// TODO: shouldn't do this until this task is fully listening
 	if this.previousTask != nil {
