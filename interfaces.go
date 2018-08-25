@@ -12,7 +12,7 @@ type Scheduler interface {
 }
 
 type Signaler interface {
-	Start() SignalReader
+	Start() (SignalReader, bool)
 	Stop()
 	Signal() bool
 }

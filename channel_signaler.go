@@ -11,15 +11,16 @@ func NewChannelSignaler() *ChannelSignaler {
 	return &ChannelSignaler{mutex: &sync.Mutex{}}
 }
 
-func (this *ChannelSignaler) Start() SignalReader {
+func (this *ChannelSignaler) Start() (SignalReader, bool) {
 	this.mutex.Lock()
 	defer this.mutex.Unlock()
 
-	if this.signals == nil {
+	started := this.signals == nil
+	if started {
 		this.signals = make(chan interface{}, 2)
 	}
 
-	return ChannelSignalReader{channel: this.signals}
+	return ChannelSignalReader{channel: this.signals}, started
 }
 func (this *ChannelSignaler) Stop() {
 	this.mutex.Lock()
