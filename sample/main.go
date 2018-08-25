@@ -13,8 +13,7 @@ import (
 )
 
 func main() {
-	signaler := edgerunner.NewChannelSignaler()
-	runner := edgerunner.NewRunner(signaler, newScheduler)
+	runner := edgerunner.NewRunner(edgerunner.NewSignaler(), newScheduler)
 
 	go func() {
 		signals := make(chan os.Signal, 16)

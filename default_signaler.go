@@ -2,27 +2,27 @@ package edgerunner
 
 import "sync"
 
-type ChannelSignaler struct {
+type DefaultSignaler struct {
 	signals chan interface{}
 	mutex   *sync.Mutex
 }
 
-func NewChannelSignaler() *ChannelSignaler {
-	return &ChannelSignaler{mutex: &sync.Mutex{}}
+func NewSignaler() *DefaultSignaler {
+	return &DefaultSignaler{mutex: &sync.Mutex{}}
 }
 
-func (this *ChannelSignaler) Start() (Reader, bool) {
+func (this *DefaultSignaler) Start() (Reader, bool) {
 	this.mutex.Lock()
 	defer this.mutex.Unlock()
 
-	started := this.signals == nil
-	if started {
+	if this.signals == nil {
 		this.signals = make(chan interface{}, 2)
+		return DefaultReader{channel: this.signals}, true
+	} else {
+		return DefaultReader{channel: this.signals}, false
 	}
-
-	return ChannelSignalReader{channel: this.signals}, started
 }
-func (this *ChannelSignaler) Stop() {
+func (this *DefaultSignaler) Stop() {
 	this.mutex.Lock()
 	defer this.mutex.Unlock()
 
@@ -31,7 +31,7 @@ func (this *ChannelSignaler) Stop() {
 		this.signals = nil
 	}
 }
-func (this *ChannelSignaler) Signal() bool {
+func (this *DefaultSignaler) Signal() bool {
 	this.mutex.Lock()
 	defer this.mutex.Unlock()
 
@@ -49,11 +49,9 @@ func (this *ChannelSignaler) Signal() bool {
 
 ///////////////////////////////
 
-type ChannelSignalReader struct {
-	channel <-chan interface{}
-}
+type DefaultReader struct{ channel <-chan interface{} }
 
-func (this ChannelSignalReader) Read() bool {
+func (this DefaultReader) Read() bool {
 	_, ok := <-this.channel
 	return ok
 }

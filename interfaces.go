@@ -1,5 +1,11 @@
 package edgerunner
 
+type Runner interface {
+	Start()
+	Stop()
+	Reload()
+}
+
 type (
 	Task interface {
 		Init() error
