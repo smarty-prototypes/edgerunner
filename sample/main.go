@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -41,10 +43,11 @@ func newScheduler(reader edgerunner.Reader) edgerunner.Scheduler {
 /////////////////////////////////////////////////////////////////
 
 type WebTask struct {
-	inner   edgerunner.Task
-	output  chan int8
-	server  *http.Server
-	counter int32
+	inner    edgerunner.Task
+	output   chan int8
+	server   *http.Server
+	listener net.Listener
+	counter  int32
 }
 
 func NewWebTask() edgerunner.Task {
@@ -53,23 +56,44 @@ func NewWebTask() edgerunner.Task {
 	}
 
 	this.inner = NewSanitizeTask(this.output)
-	this.server = &http.Server{Addr: "127.0.0.1:8080", Handler: this}
+	this.server = &http.Server{Handler: this}
 
 	return this
 }
 func (this *WebTask) Init() error {
 	this.inner.Init()
 	log.Println("Web Init")
+
+	config := &net.ListenConfig{Control: reusePort}
+
+	// this is where we take control of the port
+	if listener, err := config.Listen(context.Background(), "tcp", "127.0.0.1:8080"); err != nil {
+		return err
+	} else {
+		this.listener = listener
+	}
+
 	return nil
 }
+
+func reusePort(network, address string, conn syscall.RawConn) error {
+	return conn.Control(func(descriptor uintptr) {
+		syscall.SetsockoptInt(int(descriptor), syscall.SOL_SOCKET, syscall.SO_REUSEPORT, 1)
+	})
+}
+
 func (this *WebTask) Listen() {
 	go this.listen()
 	this.inner.Listen()
 }
 func (this *WebTask) listen() {
 	log.Println("Web Listening...")
-	this.server.ListenAndServe()
+
+	//this.server.Serve(this.listener) // this should block
+	this.server.Shutdown(context.Background())
 	close(this.output)
+	this.listener.Close()
+
 	log.Println("Web Listen completed")
 }
 
