@@ -7,15 +7,15 @@ import (
 
 type (
 	ContextSignaler struct {
-		mutex                       *sync.Mutex
-		rootCtx, stopCtx, reloadCtx context.Context
-		stopFunc, reloadFunc        context.CancelFunc
+		mutex                *sync.Mutex
+		stopCtx, reloadCtx   context.Context
+		stopFunc, reloadFunc context.CancelFunc
 	}
 	ContextSignalReader struct{ stop, reload <-chan struct{} }
 )
 
-func NewContextSignaler(root context.Context) *ContextSignaler {
-	return &ContextSignaler{mutex: &sync.Mutex{}, rootCtx: root}
+func NewContextSignaler() *ContextSignaler {
+	return &ContextSignaler{mutex: &sync.Mutex{}}
 }
 
 func (this *ContextSignaler) Start() (SignalReader, bool) {
@@ -26,8 +26,8 @@ func (this *ContextSignaler) Start() (SignalReader, bool) {
 		return this.newReader(), false
 	}
 
-	this.stopCtx, this.stopFunc = context.WithCancel(this.rootCtx)
-	this.reloadCtx, this.reloadFunc = context.WithCancel(this.stopCtx)
+	this.stopCtx, this.stopFunc = context.WithCancel(context.Background())
+	this.reloadCtx, this.reloadFunc = context.WithCancel(context.Background())
 	return this.newReader(), true
 }
 func (this *ContextSignaler) newReader() *ContextSignalReader {

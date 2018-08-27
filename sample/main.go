@@ -15,7 +15,7 @@ import (
 )
 
 func main() {
-	signaler := edgerunner.NewContextSignaler(context.Background())
+	signaler := edgerunner.NewContextSignaler()
 
 	runner := edgerunner.NewRunner(signaler, newScheduler)
 
