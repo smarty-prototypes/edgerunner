@@ -49,8 +49,8 @@ func (this *ConcurrentScheduler) scheduleTask() bool {
 }
 
 func (this *ConcurrentScheduler) watchSignal(task Task) {
-	this.previousTask = task
 	this.scheduleAgain(this.reader.Read()) // blocks until the channel is populated or closed
+	this.previousTask = task
 	this.signal.Done()
 }
 
