@@ -7,49 +7,52 @@ import (
 
 type (
 	ContextSignaler struct {
-		mutex                      *sync.Mutex
-		stopContext, reloadContext context.Context
-		stop, reload               context.CancelFunc
+		mutex                       *sync.Mutex
+		rootCtx, stopCtx, reloadCtx context.Context
+		stopFunc, reloadFunc        context.CancelFunc
 	}
 	ContextSignalReader struct{ stop, reload <-chan struct{} }
 )
 
-func NewContextSignaler() *ContextSignaler {
-	return &ContextSignaler{mutex: &sync.Mutex{}}
+func NewContextSignaler(root context.Context) *ContextSignaler {
+	return &ContextSignaler{mutex: &sync.Mutex{}, rootCtx: root}
 }
 
 func (this *ContextSignaler) Start() (SignalReader, bool) {
 	this.mutex.Lock()
 	this.mutex.Unlock()
 
-	if this.stop != nil {
+	if this.stopFunc != nil {
 		return this.newReader(), false
 	}
 
-	this.stopContext, this.stop = context.WithCancel(context.Background())
-	this.reloadContext, this.reload = context.WithCancel(this.stopContext)
+	this.stopCtx, this.stopFunc = context.WithCancel(this.rootCtx)
+	this.reloadCtx, this.reloadFunc = context.WithCancel(this.stopCtx)
 	return this.newReader(), true
 }
 func (this *ContextSignaler) newReader() *ContextSignalReader {
-	return &ContextSignalReader{stop: this.stopContext.Done(), reload: this.reloadContext.Done()}
+	return &ContextSignalReader{stop: this.stopCtx.Done(), reload: this.reloadCtx.Done()}
 }
 func (this *ContextSignaler) Stop() {
 	this.mutex.Lock()
 	defer this.mutex.Unlock()
 
-	if this.stop != nil {
-		this.stop()
-		this.stop = nil
-		this.reload = nil
+	if this.stopFunc != nil {
+		this.stopFunc()
+		this.stopFunc = nil
+		this.reloadFunc = nil
 	}
 }
-func (this *ContextSignaler) Reload() {
+func (this *ContextSignaler) Signal() bool {
 	this.mutex.Lock()
 	defer this.mutex.Unlock()
 
-	if this.reload != nil {
-		this.reload()
+	if this.reloadFunc == nil {
+		return false
 	}
+
+	this.reloadFunc()
+	return true
 }
 func (this *ContextSignalReader) Read() bool {
 	select {

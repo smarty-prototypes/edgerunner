@@ -15,7 +15,9 @@ import (
 )
 
 func main() {
-	runner := edgerunner.NewRunner(edgerunner.NewSignaler(), newScheduler)
+	signaler := edgerunner.NewContextSignaler(context.Background())
+
+	runner := edgerunner.NewRunner(signaler, newScheduler)
 
 	go func() {
 		signals := make(chan os.Signal, 16)
