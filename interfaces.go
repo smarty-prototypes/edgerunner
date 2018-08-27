@@ -3,7 +3,7 @@ package edgerunner
 type Runner interface {
 	Start()
 	Stop()
-	Reload()
+	Reload() bool
 }
 
 type (

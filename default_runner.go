@@ -5,7 +5,7 @@ type DefaultRunner struct {
 	factory  SchedulerFactory
 }
 
-func NewRunner(signaler Signaler, factory SchedulerFactory) *DefaultRunner {
+func NewRunner(signaler Signaler, factory SchedulerFactory) Runner {
 	return &DefaultRunner{signaler: signaler, factory: factory}
 }
 
