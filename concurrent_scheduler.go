@@ -6,14 +6,14 @@ import (
 )
 
 type ConcurrentScheduler struct {
-	reader       Reader
+	reader       SignalReader
 	factory      TaskFactory
 	again        uint32
 	signal       *sync.WaitGroup
 	previousTask Task
 }
 
-func NewConcurrentScheduler(reader Reader, factory TaskFactory) *ConcurrentScheduler {
+func NewConcurrentScheduler(reader SignalReader, factory TaskFactory) *ConcurrentScheduler {
 	return &ConcurrentScheduler{
 		reader:  reader,
 		factory: factory,

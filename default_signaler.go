@@ -11,15 +11,15 @@ func NewSignaler() *DefaultSignaler {
 	return &DefaultSignaler{mutex: &sync.Mutex{}}
 }
 
-func (this *DefaultSignaler) Start() (Reader, bool) {
+func (this *DefaultSignaler) Start() (SignalReader, bool) {
 	this.mutex.Lock()
 	defer this.mutex.Unlock()
 
 	if this.signals == nil {
 		this.signals = make(chan interface{}, 2)
-		return DefaultReader{channel: this.signals}, true
+		return DefaultSignalReader{channel: this.signals}, true
 	} else {
-		return DefaultReader{channel: this.signals}, false
+		return DefaultSignalReader{channel: this.signals}, false
 	}
 }
 func (this *DefaultSignaler) Stop() {
@@ -49,9 +49,9 @@ func (this *DefaultSignaler) Signal() bool {
 
 ///////////////////////////////
 
-type DefaultReader struct{ channel <-chan interface{} }
+type DefaultSignalReader struct{ channel <-chan interface{} }
 
-func (this DefaultReader) Read() bool {
+func (this DefaultSignalReader) Read() bool {
 	_, ok := <-this.channel
 	return ok
 }

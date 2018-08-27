@@ -19,16 +19,16 @@ type (
 	Scheduler interface {
 		Schedule()
 	}
-	SchedulerFactory func(Reader) Scheduler
+	SchedulerFactory func(SignalReader) Scheduler
 )
 
 type (
 	Signaler interface {
-		Start() (Reader, bool)
+		Start() (SignalReader, bool)
 		Stop()
 		Signal() bool
 	}
-	Reader interface {
+	SignalReader interface {
 		Read() bool
 	}
 )

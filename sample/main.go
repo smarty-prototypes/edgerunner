@@ -36,7 +36,7 @@ func main() {
 	runner.Start()
 }
 
-func newScheduler(reader edgerunner.Reader) edgerunner.Scheduler {
+func newScheduler(reader edgerunner.SignalReader) edgerunner.Scheduler {
 	return edgerunner.NewSerialScheduler(reader, NewWebTask)
 }
 
@@ -89,7 +89,7 @@ func (this *WebTask) Listen() {
 func (this *WebTask) listen() {
 	log.Println("Web Listening...")
 
-	//this.server.Serve(this.listener) // this should block
+	this.server.Serve(this.listener) // this should block
 	this.server.Shutdown(context.Background())
 	close(this.output)
 	this.listener.Close()
