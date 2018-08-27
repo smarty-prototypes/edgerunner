@@ -1,4 +1,4 @@
-package main
+package edgerunner
 
 import (
 	"sync"
@@ -6,18 +6,18 @@ import (
 )
 
 type ConcurrentScheduler struct {
-	reader       SignalReader
+	reader       Reader
 	factory      TaskFactory
 	again        uint32
 	signal       *sync.WaitGroup
 	previousTask Task
 }
 
-func NewConcurrentScheduler(reader SignalReader, factory TaskFactory) *ConcurrentScheduler {
+func NewConcurrentScheduler(reader Reader, factory TaskFactory) *ConcurrentScheduler {
 	return &ConcurrentScheduler{
 		reader:  reader,
 		factory: factory,
-		signal: &sync.WaitGroup{},
+		signal:  &sync.WaitGroup{},
 	}
 }
 
@@ -37,7 +37,7 @@ func (this *ConcurrentScheduler) Schedule() {
 func (this *ConcurrentScheduler) scheduleTask() bool {
 	task := this.factory()
 	go this.watchSignal(task)
-	task.Init()   // TODO: if error
+	task.Init() // TODO: if error
 
 	// TODO: shouldn't do this until this task is fully listening
 	if this.previousTask != nil {

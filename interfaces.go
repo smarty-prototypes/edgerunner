@@ -1,25 +1,34 @@
-package main
+package edgerunner
 
-import "io"
-
-type Task interface {
-	Init() error
-	Listen()
-	io.Closer
-}
-type Scheduler interface {
-	Schedule()
-}
-
-type Signaler interface {
-	Start() SignalReader
+type Runner interface {
+	Start()
 	Stop()
-	Signal() bool
+	Reload() bool
 }
 
-type SignalReader interface {
-	Read() bool
-}
+type (
+	Task interface {
+		Init() error
+		Listen()
+		Close() error
+	}
+	TaskFactory func() Task
+)
 
-type TaskFactory func() Task
-type SchedulerFactory func(SignalReader) Scheduler
+type (
+	Scheduler interface {
+		Schedule()
+	}
+	SchedulerFactory func(Reader) Scheduler
+)
+
+type (
+	Signaler interface {
+		Start() (Reader, bool)
+		Stop()
+		Signal() bool
+	}
+	Reader interface {
+		Read() bool
+	}
+)
