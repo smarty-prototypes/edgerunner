@@ -3,9 +3,9 @@ package main
 import (
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
-	"sync"
 	"sync/atomic"
 	"syscall"
 
@@ -35,34 +35,164 @@ func main() {
 }
 
 func newScheduler(reader edgerunner.Reader) edgerunner.Scheduler {
-	return edgerunner.NewSerialScheduler(reader, NewSimpleTask)
+	return edgerunner.NewSerialScheduler(reader, NewWebTask)
 }
 
-type SimpleTask struct {
-	id     uint32
-	waiter *sync.WaitGroup
+/////////////////////////////////////////////////////////////////
+
+type WebTask struct {
+	inner   edgerunner.Task
+	output  chan int8
+	server  *http.Server
+	counter int32
 }
 
-var counter uint32
+func NewWebTask() edgerunner.Task {
+	this := &WebTask{
+		output: make(chan int8, 16),
+	}
 
-func NewSimpleTask() edgerunner.Task {
-	id := atomic.AddUint32(&counter, 1)
-	return &SimpleTask{id: id, waiter: &sync.WaitGroup{}}
+	this.inner = NewSanitizeTask(this.output)
+	this.server = &http.Server{Addr: "127.0.0.1:8080", Handler: this}
+
+	return this
 }
-
-func (this *SimpleTask) Init() error {
-	log.Printf("Task %d initializing.\n", this.id)
-	this.waiter.Add(1)
+func (this *WebTask) Init() error {
+	this.inner.Init()
+	log.Println("Web Init")
 	return nil
 }
-func (this *SimpleTask) Listen() {
-	log.Printf("Task %d listening.\n", this.id)
-	this.waiter.Wait()
-	log.Printf("Task %d completed.\n", this.id)
+func (this *WebTask) Listen() {
+	go this.listen()
+	this.inner.Listen()
 }
-func (this *SimpleTask) Close() error {
-	log.Printf("Task %d closing.\n", this.id)
-	this.waiter.Done()
-	log.Printf("Task %d marked as closed.\n", this.id)
+func (this *WebTask) listen() {
+	log.Println("Web Listening...")
+	this.server.ListenAndServe()
+	close(this.output)
+	log.Println("Web Listen completed")
+}
+
+func (this *WebTask) ServeHTTP(response http.ResponseWriter, request *http.Request) {
+	value := int8(atomic.AddInt32(&this.counter, 1))
+	log.Println("Web Listen", value)
+	this.output <- value
+}
+
+func (this *WebTask) Close() error {
+	log.Println("Web Closing")
+	this.server.Close()
+	log.Println("Web marked server as closed")
 	return nil
 }
+
+///////////////////////////////////////////////////////////////////
+
+type SanitizeTask struct {
+	inner  edgerunner.Task
+	input  chan int8
+	output chan int16
+}
+
+func NewSanitizeTask(input chan int8) edgerunner.Task {
+	output := make(chan int16, 16)
+	return &SanitizeTask{
+		inner:  NewVerifyTask(output),
+		input:  input,
+		output: output,
+	}
+}
+func (this *SanitizeTask) Init() error {
+	this.inner.Init()
+	log.Println("Sanitize Init")
+	return nil
+}
+func (this *SanitizeTask) Listen() {
+	go this.listen()    // start my listener in the background
+	this.inner.Listen() // wait for inner listener to complete before we exit
+
+}
+func (this *SanitizeTask) listen() {
+	log.Println("Sanitize Listening...")
+	for item := range this.input {
+		log.Println("Sanitize:", item)
+		this.output <- int16(item)
+	}
+
+	close(this.output)
+	log.Println("Sanitize Listen completed")
+}
+
+func (this *SanitizeTask) Close() error {
+	return nil
+}
+
+///////////////////////////////////////////////////////////////////
+
+type VerifyTask struct {
+	inner  edgerunner.Task
+	input  chan int16
+	output chan int32
+}
+
+func NewVerifyTask(input chan int16) edgerunner.Task {
+	output := make(chan int32, 16)
+	return &VerifyTask{
+		inner:  NewLogTask(output),
+		input:  input,
+		output: output,
+	}
+}
+func (this *VerifyTask) Init() error {
+	this.inner.Init()
+	log.Println("Verify Init")
+	return nil
+}
+func (this *VerifyTask) Listen() {
+	go this.listen()    // start my listener in the background
+	this.inner.Listen() // wait for inner listener to complete before we exit
+
+}
+func (this *VerifyTask) listen() {
+	log.Println("Verify Listening...")
+
+	for item := range this.input {
+		log.Println("Verify:", item)
+		this.output <- int32(item)
+	}
+
+	close(this.output)
+	log.Println("Verify Listen completed")
+}
+
+func (this *VerifyTask) Close() error {
+	return nil
+}
+
+///////////////////////////////////////////////////////////////////
+
+type LogTask struct {
+	input chan int32
+}
+
+func NewLogTask(input chan int32) edgerunner.Task {
+	return &LogTask{input: input}
+}
+func (this *LogTask) Init() error {
+	log.Println("Log Init")
+	return nil
+}
+func (this *LogTask) Listen() {
+	log.Println("Log Listening...")
+
+	for item := range this.input {
+		log.Println("Log:", item)
+	}
+
+	log.Println("Log Listen completed")
+}
+func (this *LogTask) Close() error {
+	return nil
+}
+
+///////////////////////////////////////////////////////////////////
