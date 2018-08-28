@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"sync/atomic"
 	"syscall"
+	"time"
 
 	"github.com/smartystreets/edgerunner"
 )
@@ -34,10 +35,16 @@ func main() {
 	}()
 
 	runner.Start()
+
+	//TODO: using concurrent scheduler, the program can exit before all listeners have terminated.
+	//      this sleep prevents that but is not a good solution
+	//      we need to come up with a better way to know when we can exit. (waiter, or channel?)
+	time.Sleep(time.Millisecond)
 }
 
 func newScheduler(reader edgerunner.SignalReader) edgerunner.Scheduler {
 	return edgerunner.NewSerialScheduler(reader, NewWebTask)
+	//return edgerunner.NewConcurrentScheduler(reader, NewWebTask)
 }
 
 /////////////////////////////////////////////////////////////////

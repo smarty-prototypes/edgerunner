@@ -6,32 +6,32 @@ import (
 )
 
 type ConcurrentScheduler struct {
-	reader       SignalReader
-	factory      TaskFactory
-	again        uint32
-	signal       *sync.WaitGroup
-	previousTask Task
+	reader         SignalReader
+	factory        TaskFactory
+	again          uint32
+	osSignalWaiter *sync.WaitGroup
+	previousTask   Task
 }
 
 func NewConcurrentScheduler(reader SignalReader, factory TaskFactory) *ConcurrentScheduler {
 	return &ConcurrentScheduler{
-		reader:  reader,
-		factory: factory,
-		signal:  &sync.WaitGroup{},
+		reader:         reader,
+		factory:        factory,
+		osSignalWaiter: &sync.WaitGroup{},
 	}
 }
 
 func (this *ConcurrentScheduler) Schedule() {
+	atomic.StoreUint32(&this.again, 1)
 
-	for {
-		this.signal.Add(1)
+	for this.canScheduleAgain() {
+		this.osSignalWaiter.Add(1)
 		go this.scheduleTask()
-		this.signal.Wait()
-		if !this.canScheduleAgain() {
-			break
+		this.osSignalWaiter.Wait()
+		if this.previousTask != nil {
+			this.previousTask.Close()
 		}
 	}
-
 }
 
 func (this *ConcurrentScheduler) scheduleTask() bool {
@@ -39,7 +39,7 @@ func (this *ConcurrentScheduler) scheduleTask() bool {
 	go this.watchSignal(task)
 	task.Init() // TODO: if error
 
-	// TODO: shouldn't do this until this task is fully listening
+	// TODO: how to delay this until the current task is fully listening
 	if this.previousTask != nil {
 		this.previousTask.Close()
 	}
@@ -49,9 +49,9 @@ func (this *ConcurrentScheduler) scheduleTask() bool {
 }
 
 func (this *ConcurrentScheduler) watchSignal(task Task) {
-	this.scheduleAgain(this.reader.Read()) // blocks until the channel is populated or closed
+	this.scheduleAgain(this.reader.Read())
 	this.previousTask = task
-	this.signal.Done()
+	this.osSignalWaiter.Done()
 }
 
 func (this *ConcurrentScheduler) canScheduleAgain() bool {
