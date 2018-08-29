@@ -6,6 +6,7 @@ type SerialScheduler struct {
 	reader  SignalReader
 	factory TaskFactory
 	again   uint32
+	err     error
 }
 
 func NewSerialScheduler(reader SignalReader, factory TaskFactory) *SerialScheduler {
@@ -15,16 +16,21 @@ func NewSerialScheduler(reader SignalReader, factory TaskFactory) *SerialSchedul
 	}
 }
 
-func (this *SerialScheduler) Schedule() {
+func (this *SerialScheduler) Schedule() error {
 	for this.scheduleTask() {
 	}
+	return this.err
 }
 
 func (this *SerialScheduler) scheduleTask() bool {
 	task := this.factory()
 	go this.watchSignal(task)
-	task.Init()   // TODO: if error
-	task.Listen() // we only schedule again if listen exits correctly
+
+	if this.err = task.Init(); this.err != nil {
+		return false
+	} else {
+		task.Listen() // we only schedule again if listen exits correctly
+	}
 
 	return this.canScheduleAgain()
 }

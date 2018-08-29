@@ -1,7 +1,7 @@
 package edgerunner
 
 type Runner interface {
-	Start()
+	Start() error
 	Stop()
 	Reload() bool
 }
@@ -17,7 +17,7 @@ type (
 
 type (
 	Scheduler interface {
-		Schedule()
+		Schedule() error
 	}
 	SchedulerFactory func(SignalReader) Scheduler
 )

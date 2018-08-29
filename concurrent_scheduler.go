@@ -21,7 +21,7 @@ func NewConcurrentScheduler(reader SignalReader, factory TaskFactory) *Concurren
 	}
 }
 
-func (this *ConcurrentScheduler) Schedule() {
+func (this *ConcurrentScheduler) Schedule() error {
 	atomic.StoreUint32(&this.again, 1)
 
 	for this.canScheduleAgain() {
@@ -32,6 +32,8 @@ func (this *ConcurrentScheduler) Schedule() {
 			this.previousTask.Close()
 		}
 	}
+
+	return nil
 }
 
 func (this *ConcurrentScheduler) scheduleTask() bool {
