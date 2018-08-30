@@ -16,7 +16,7 @@ func (this *DefaultSignaler) Start() (SignalReader, bool) {
 	defer this.mutex.Unlock()
 
 	if this.signals == nil {
-		this.signals = make(chan interface{}, 2)
+		this.signals = make(chan interface{}, 2) // buffered channel
 		return DefaultSignalReader{channel: this.signals}, true
 	} else {
 		return DefaultSignalReader{channel: this.signals}, false
@@ -39,11 +39,10 @@ func (this *DefaultSignaler) Signal() bool {
 		return false
 	}
 
-	if len(this.signals) > 0 {
-		return true // act like we received a signal but we really didn't
+	if len(this.signals) == 0 {
+		this.signals <- nil // only send a signal if one isn't waiting
 	}
 
-	this.signals <- nil
 	return true
 }
 
@@ -52,6 +51,7 @@ func (this *DefaultSignaler) Signal() bool {
 type DefaultSignalReader struct{ channel <-chan interface{} }
 
 func (this DefaultSignalReader) Read() bool {
+	// TODO: drain the channel completely on this read operation
 	_, ok := <-this.channel
 	return ok
 }
