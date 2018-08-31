@@ -1,70 +1,75 @@
 package edgerunner
 
 import (
+	"io"
 	"sync"
-	"sync/atomic"
 )
 
 type ConcurrentScheduler struct {
-	reader         SignalReader
-	factory        TaskFactory
-	again          uint32
-	osSignalWaiter *sync.WaitGroup
-	previousTask   Task
+	reader  SignalReader
+	factory TaskFactory
+	waiter  *sync.WaitGroup
+	mutex   *sync.Mutex
+	err     error
 }
 
 func NewConcurrentScheduler(reader SignalReader, factory TaskFactory) *ConcurrentScheduler {
 	return &ConcurrentScheduler{
-		reader:         reader,
-		factory:        factory,
-		osSignalWaiter: &sync.WaitGroup{},
+		reader:  reader,
+		factory: factory,
+		waiter:  &sync.WaitGroup{},
+		mutex:   &sync.Mutex{},
 	}
 }
 
 func (this *ConcurrentScheduler) Schedule() error {
-	atomic.StoreUint32(&this.again, 1)
+	var previous, current chan struct{}
 
-	for this.canScheduleAgain() {
-		this.osSignalWaiter.Add(1)
-		go this.scheduleTask()
-		this.osSignalWaiter.Wait()
-		if this.previousTask != nil {
-			this.previousTask.Close()
+	for {
+		this.waiter.Add(1) // another task has started
+
+		previous = current
+		if this.loadError() == nil {
+			// this previous task started properly, so now we can create a new channel
+			current = make(chan struct{}, 2)
+		}
+
+		task := this.factory()
+		go this.runTask(task, previous)
+		go this.watchSignal(task, current)
+
+		if !this.reader.Read() {
+			break
 		}
 	}
 
-	return nil
+	close(current)
+	this.waiter.Wait() // wait for all instantiated tasks to 100% completely finish
+	return this.loadError()
 }
+func (this *ConcurrentScheduler) runTask(task Task, signal chan struct{}) {
+	defer this.waiter.Done() // task has finished
 
-func (this *ConcurrentScheduler) scheduleTask() bool {
-	task := this.factory()
-	go this.watchSignal(task)
-	task.Init() // TODO: if error
-
-	// TODO: how to delay this until the current task is fully listening
-	if this.previousTask != nil {
-		this.previousTask.Close()
+	if this.storeError(task.Init()) {
+		return // initialize failed
 	}
-	task.Listen() // blocks until closed, but cannot close until the next task is listening
 
-	return this.canScheduleAgain()
+	close(signal) // signal the previous task (if any) that we're starting to listen
+	task.Listen()
+}
+func (this *ConcurrentScheduler) watchSignal(task io.Closer, signal chan struct{}) {
+	<-signal
+	task.Close()
 }
 
-func (this *ConcurrentScheduler) watchSignal(task Task) {
-	this.scheduleAgain(this.reader.Read())
-	this.previousTask = task
-	this.osSignalWaiter.Done()
+func (this *ConcurrentScheduler) storeError(err error) bool {
+	this.mutex.Lock()
+	defer this.mutex.Unlock()
+	this.err = err
+	return err != nil
 }
-
-func (this *ConcurrentScheduler) canScheduleAgain() bool {
-	defer atomic.StoreUint32(&this.again, 0) // reset state
-	return atomic.LoadUint32(&this.again) == 1
-}
-
-func (this *ConcurrentScheduler) scheduleAgain(again bool) {
-	if again {
-		atomic.StoreUint32(&this.again, 1)
-	} else {
-		atomic.StoreUint32(&this.again, 0)
-	}
+func (this *ConcurrentScheduler) loadError() error {
+	this.mutex.Lock()
+	defer this.mutex.Unlock()
+	return this.err
 }
