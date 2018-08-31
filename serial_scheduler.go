@@ -36,8 +36,9 @@ func (this *SerialScheduler) scheduleTask() bool {
 }
 
 func (this *SerialScheduler) watchSignal(task Task) {
-	this.scheduleAgain(this.reader.Read())
-	task.Close()
+	reload := this.reader.Read()
+	err := task.Close()
+	this.scheduleAgain(reload && err == nil)
 }
 
 func (this *SerialScheduler) canScheduleAgain() bool {
