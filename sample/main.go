@@ -37,7 +37,8 @@ func main() {
 }
 
 func newScheduler(reader edgerunner.SignalReader) edgerunner.Scheduler {
-	return edgerunner.NewSerialScheduler(reader, NewWebTask)
+	return edgerunner.NewConcurrentScheduler(reader, NewWebTask)
+	//return edgerunner.NewSerialScheduler(reader, NewWebTask)
 }
 
 /////////////////////////////////////////////////////////////////
