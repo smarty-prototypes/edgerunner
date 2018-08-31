@@ -3,7 +3,7 @@ package edgerunner
 import "sync"
 
 type DefaultSignaler struct {
-	signals chan interface{}
+	signals chan struct{}
 	mutex   *sync.Mutex
 }
 
@@ -16,7 +16,7 @@ func (this *DefaultSignaler) Start() (SignalReader, bool) {
 	defer this.mutex.Unlock()
 
 	if this.signals == nil {
-		this.signals = make(chan interface{}, 2) // buffered channel
+		this.signals = make(chan struct{}, 2) // buffered channel
 		return DefaultSignalReader{channel: this.signals}, true
 	} else {
 		return DefaultSignalReader{channel: this.signals}, false
@@ -40,7 +40,7 @@ func (this *DefaultSignaler) Signal() bool {
 	}
 
 	if len(this.signals) == 0 {
-		this.signals <- nil // only send a signal if one isn't waiting
+		this.signals <- struct{}{} // only send a signal if one isn't waiting
 	}
 
 	return true
@@ -48,7 +48,7 @@ func (this *DefaultSignaler) Signal() bool {
 
 ///////////////////////////////
 
-type DefaultSignalReader struct{ channel <-chan interface{} }
+type DefaultSignalReader struct{ channel <-chan struct{} }
 
 func (this DefaultSignalReader) Read() bool {
 	// TODO: drain the channel completely on this read operation
