@@ -1,7 +1,6 @@
 package edgerunner
 
 import (
-	"io"
 	"sync"
 	"sync/atomic"
 )
@@ -12,7 +11,7 @@ type ConcurrentScheduler struct {
 	waiter   *sync.WaitGroup
 	startup  chan error
 	shutdown chan struct{}
-	head     io.Closer
+	head     *ConcurrentTask
 	err      error
 }
 
@@ -56,7 +55,7 @@ func (this *ConcurrentScheduler) scheduleNextTask() bool {
 	return this.reader.Read()
 }
 
-func (this *ConcurrentScheduler) runTask(proposed Task, previous io.Closer) {
+func (this *ConcurrentScheduler) runTask(proposed, previous *ConcurrentTask) {
 	defer this.waiter.Done()
 	if this.initializeTask(proposed) {
 		previous.Close()
