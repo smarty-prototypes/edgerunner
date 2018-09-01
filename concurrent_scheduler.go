@@ -5,19 +5,13 @@ import (
 	"sync"
 )
 
-// Issues:
-// 1. if Listen() exits without Close() being called
-// 2. if Init() returns an error
-
 type ConcurrentScheduler struct {
 	reader  SignalReader
 	factory TaskFactory
 	waiter  *sync.WaitGroup
 	mutex   *sync.Mutex
 	err     error
-
-	previous chan struct{}
-	current  chan struct{}
+	active  []io.Closer
 }
 
 func NewConcurrentScheduler(reader SignalReader, factory TaskFactory) *ConcurrentScheduler {
@@ -33,37 +27,70 @@ func (this *ConcurrentScheduler) Schedule() error {
 	for this.schedule() {
 	}
 
-	closeChannel(this.current) // signal the current instance to terminate
-	this.waiter.Wait()         // wait for all outstanding tasks to 100% completely finish
-	return this.loadError()    // did the most recent task have any problem initializing?
+	this.closeAll()
+	this.waiter.Wait()
+	return this.err
 }
+
 func (this *ConcurrentScheduler) schedule() bool {
-	this.waiter.Add(1) // another task has started
+	current := this.factory()
+	previous := this.addTask(current)
+	go this.runTask(previous, current)
+	return this.reader.Read()
+}
 
-	if this.loadError() == nil {
-		this.previous = this.current
-		this.current = make(chan struct{}, 2) // the previous task started successfully
+func (this *ConcurrentScheduler) addTask(item io.Closer) io.Closer {
+	this.waiter.Add(1)
+
+	this.mutex.Lock()
+	defer this.mutex.Unlock()
+
+	this.active = append(this.active, item)
+
+	if len(this.active) > 1 {
+		return this.active[0]
+	} else {
+		return nil
+	}
+}
+
+func (this *ConcurrentScheduler) runTask(previous io.Closer, current Task) {
+	defer this.waiter.Done()
+
+	if this.storeError(current.Init()) {
+		this.closeTask(current) // current one failed to start, close it
+	} else {
+		this.closeTask(previous)
+		current.Listen()
+	}
+}
+
+func (this *ConcurrentScheduler) closeTask(task io.Closer) {
+	if task == nil {
+		return
 	}
 
-	task := this.factory()
+	task.Close() // go close?
 
-	go this.runTask(task, this.previous)
-	go this.watchSignal(task, this.current)
-	return this.reader.Read() // blocking
+	this.mutex.Lock()
+	defer this.mutex.Unlock()
+
+	for i, item := range this.active {
+		if item == task {
+			this.active = append(this.active[:i], this.active[i+1:]...)
+		}
+	}
 }
-func (this *ConcurrentScheduler) runTask(task Task, previous chan struct{}) {
-	defer this.waiter.Done() // task has finished
 
-	if this.storeError(task.Init()) {
-		return // initialization failed; don't close the previous task
+func (this *ConcurrentScheduler) closeAll() {
+	this.mutex.Lock()
+	defer this.mutex.Unlock()
+
+	for _, item := range this.active {
+		item.Close()
 	}
 
-	closeChannel(previous) // signal the previous task (if any) that we're starting to listen
-	task.Listen()
-}
-func (this *ConcurrentScheduler) watchSignal(task io.Closer, signal chan struct{}) {
-	<-signal
-	task.Close()
+	this.active = nil
 }
 
 func (this *ConcurrentScheduler) storeError(err error) bool {
@@ -71,15 +98,4 @@ func (this *ConcurrentScheduler) storeError(err error) bool {
 	defer this.mutex.Unlock()
 	this.err = err
 	return err != nil
-}
-func (this *ConcurrentScheduler) loadError() error {
-	this.mutex.Lock()
-	defer this.mutex.Unlock()
-	return this.err
-}
-
-func closeChannel(channel chan struct{}) {
-	if channel != nil {
-		close(channel)
-	}
 }
