@@ -5,6 +5,11 @@ import (
 	"sync"
 )
 
+// the solution below has 2 issues:
+// 1. if Listen() exits prematurely, we should shut down the process
+// 2. if the reload signal is called quickly, we should only be doing one thing at a time
+//    and we should block until the next task is set up and running.
+
 type ConcurrentScheduler struct {
 	reader  SignalReader
 	factory TaskFactory
