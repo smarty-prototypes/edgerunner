@@ -5,102 +5,121 @@ import (
 	"sync"
 )
 
-// the solution below has 2 issues:
-// 1. if Listen() exits prematurely, we should shut down the process
-// 2. if the reload signal is called quickly, we should only be doing one thing at a time
-//    and we should block until the next task is set up and running.
-
 type ConcurrentScheduler struct {
-	reader  SignalReader
-	factory TaskFactory
-	waiter  *sync.WaitGroup
-	mutex   *sync.Mutex
-	err     error
-	active  []io.Closer
+	reader   SignalReader
+	factory  TaskFactory
+	shutdown chan struct{}
+	startup  chan error
+	waiter   *sync.WaitGroup
+	mutex    *sync.Mutex
+	active   []io.Closer
+	closed   bool
+	err      error
 }
 
 func NewConcurrentScheduler(reader SignalReader, factory TaskFactory) *ConcurrentScheduler {
 	return &ConcurrentScheduler{
-		reader:  reader,
-		factory: factory,
-		waiter:  &sync.WaitGroup{},
-		mutex:   &sync.Mutex{},
+		reader:   reader,
+		factory:  factory,
+		shutdown: make(chan struct{}, 2),
+		startup:  make(chan error, 2),
+		waiter:   &sync.WaitGroup{},
+		mutex:    &sync.Mutex{},
 	}
 }
 
 func (this *ConcurrentScheduler) Schedule() error {
-	for this.schedule() {
-	}
-
-	this.closeAll()
-	this.waiter.Wait()
+	go this.schedule()
+	<-this.shutdown
+	this.cleanup()
 	return this.err
 }
-func (this *ConcurrentScheduler) schedule() bool {
-	previous, current := this.newTask()
-	go this.runTask(previous, current)
-	return this.reader.Read()
+func (this *ConcurrentScheduler) schedule() {
+	for this.scheduleMoreTasks() {
+	}
+
+	this.shutdown <- struct{}{}
 }
-func (this *ConcurrentScheduler) newTask() (io.Closer, Task) {
-	this.waiter.Add(1)
+
+func (this *ConcurrentScheduler) scheduleMoreTasks() bool {
 	task := this.factory()
 
-	this.mutex.Lock()
-	defer this.mutex.Unlock()
-
-	previous := this.previousTask()
-	this.active = append(this.active, task)
-	return previous, task
-
-}
-func (this *ConcurrentScheduler) previousTask() io.Closer {
-	if len(this.active) > 0 {
-		return this.active[len(this.active)-1]
-	} else {
-		return nil
+	previous := this.appendActive(task)
+	go this.runTask(task, previous)
+	if this.err = <-this.startup; this.err != nil {
+		this.closeTask(task)
 	}
-}
-func (this *ConcurrentScheduler) runTask(previous io.Closer, current Task) {
-	defer this.waiter.Done()
 
-	if this.storeError(current.Init()) {
-		this.closeTask(current) // current one failed to start, mark it as closed
-	} else {
-		this.closeTask(previous)
-		current.Listen()
-	}
+	return this.reader.Read() && !this.isClosed()
 }
+func (this *ConcurrentScheduler) runTask(task Task, previous io.Closer) {
+	defer this.waiter.Done() // when this function exits, the task is considered complete
 
-func (this *ConcurrentScheduler) closeTask(task io.Closer) {
-	if task == nil {
+	if !this.initializeTask(task) {
 		return
 	}
 
-	go task.Close() // mark as closed in the background
+	if previous != nil {
+		go previous.Close() // go vs inline?
+	}
+
+	task.Listen()
+
+	// TODO: if this exits early: this.shutdown <- struct{}{}
+}
+func (this *ConcurrentScheduler) initializeTask(task Task) bool {
+	err := task.Init()
+	this.startup <- err
+	return err == nil
+}
+
+func (this *ConcurrentScheduler) appendActive(item io.Closer) (previous io.Closer) {
+	this.waiter.Add(1)
 
 	this.mutex.Lock()
 	defer this.mutex.Unlock()
 
-	for i, item := range this.active {
-		if item == task {
-			this.active = append(this.active[:i], this.active[i+1:]...)
-		}
+	if len(this.active) > 0 {
+		previous = this.active[len(this.active)-1]
+	}
+
+	this.active = append(this.active, item)
+	return previous
+}
+func (this *ConcurrentScheduler) closeTask(task io.Closer) {
+	task.Close()
+
+	this.mutex.Lock()
+	defer this.mutex.Unlock()
+
+	if len(this.active) > 0 {
+		this.active = this.active[:len(this.active)-1] // remove the last item
 	}
 }
-func (this *ConcurrentScheduler) closeAll() {
+
+func (this *ConcurrentScheduler) cleanup() {
+	this.shutdownActive()
+	this.waiter.Wait()
+	close(this.startup)
+	close(this.shutdown)
+}
+func (this *ConcurrentScheduler) shutdownActive() {
 	this.mutex.Lock()
 	defer this.mutex.Unlock()
+
+	if this.closed {
+		return
+	}
 
 	for _, item := range this.active {
 		item.Close()
 	}
 
+	this.closed = true
 	this.active = nil
 }
-
-func (this *ConcurrentScheduler) storeError(err error) bool {
+func (this *ConcurrentScheduler) isClosed() bool {
 	this.mutex.Lock()
 	defer this.mutex.Unlock()
-	this.err = err
-	return err != nil
+	return this.closed
 }
