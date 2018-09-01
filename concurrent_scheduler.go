@@ -3,126 +3,98 @@ package edgerunner
 import (
 	"io"
 	"sync"
+	"sync/atomic"
 )
 
 type ConcurrentScheduler struct {
-	reader   SignalReader
-	factory  TaskFactory
-	shutdown chan struct{}
-	startup  chan error
-	waiter   *sync.WaitGroup
-	mutex    *sync.Mutex
-	active   []io.Closer
-	closed   bool
-	err      error
+	reader        SignalReader
+	factory       TaskFactory
+	waiter        *sync.WaitGroup
+	startupResult chan error
+	head          *SafeTask
+	counter       uint32
+	err           error
 }
 
 func NewConcurrentScheduler(reader SignalReader, factory TaskFactory) *ConcurrentScheduler {
 	return &ConcurrentScheduler{
-		reader:   reader,
-		factory:  factory,
-		shutdown: make(chan struct{}, 2),
-		startup:  make(chan error, 2),
-		waiter:   &sync.WaitGroup{},
-		mutex:    &sync.Mutex{},
+		reader:        reader,
+		factory:       factory,
+		waiter:        &sync.WaitGroup{},
+		startupResult: make(chan error, 2),
 	}
 }
 
 func (this *ConcurrentScheduler) Schedule() error {
-	go this.schedule()
-	<-this.shutdown
-	this.cleanup()
+	for this.schedule() {
+	}
+
+	this.head.Close()
+	this.waiter.Wait()
+
 	return this.err
 }
-func (this *ConcurrentScheduler) schedule() {
-	for this.scheduleMoreTasks() {
+func (this *ConcurrentScheduler) schedule() bool {
+	if !this.head.IsSafe() {
+		return false
 	}
 
-	this.shutdown <- struct{}{}
-}
-
-func (this *ConcurrentScheduler) scheduleMoreTasks() bool {
-	task := this.factory()
-
-	previous := this.appendActive(task)
+	this.waiter.Add(1)
+	task := &SafeTask{Task: this.factory()}
+	previous := this.head
 	go this.runTask(task, previous)
-	if this.err = <-this.startup; this.err != nil {
-		this.closeTask(task)
+
+	if this.err = <-this.startupResult; this.err != nil {
+		task.Close()
+	} else {
+		this.head = task
 	}
 
-	return this.reader.Read() && !this.isClosed()
-}
-func (this *ConcurrentScheduler) runTask(task Task, previous io.Closer) {
-	defer this.waiter.Done() // when this function exits, the task is considered complete
+	if this.counter == 0 && this.err != nil {
+		return false
+	}
 
-	if !this.initializeTask(task) {
+	this.counter++
+	return this.reader.Read() && this.head.IsSafe()
+}
+
+func (this *ConcurrentScheduler) runTask(proposed Task, previous io.Closer) {
+	defer this.waiter.Done()
+	if !this.initializeTask(proposed) {
 		return
 	}
 
-	this.closeTask(previous)
-	task.Listen()
+	// note: semi-concurrent = previous.Close(), fully concurrent = go previous.Close()
+	previous.Close()
+	proposed.Listen()
 
-	// TODO: if this exits early: this.shutdown <- struct{}{}
 }
 func (this *ConcurrentScheduler) initializeTask(task Task) bool {
 	err := task.Init()
-	this.startup <- err
+	this.startupResult <- err
 	return err == nil
 }
 
-func (this *ConcurrentScheduler) appendActive(item io.Closer) (previous io.Closer) {
-	this.waiter.Add(1)
+/////////////////////////////////////////////////////////////////
 
-	this.mutex.Lock()
-	defer this.mutex.Unlock()
-
-	if len(this.active) > 0 {
-		previous = this.active[len(this.active)-1]
-	}
-
-	this.active = append(this.active, item)
-	return previous
-}
-func (this *ConcurrentScheduler) closeTask(task io.Closer) {
-	if task == nil {
-		return
-	}
-
-	task.Close()
-
-	this.mutex.Lock()
-	defer this.mutex.Unlock()
-
-	for i, item := range this.active {
-		if item == task {
-			this.active = append(this.active[:i], this.active[i+1:]...)
-		}
-	}
+type SafeTask struct {
+	Task
+	state uint32
 }
 
-func (this *ConcurrentScheduler) cleanup() {
-	this.shutdownActive()
-	this.waiter.Wait()
-	close(this.startup)
-	close(this.shutdown)
-}
-func (this *ConcurrentScheduler) shutdownActive() {
-	this.mutex.Lock()
-	defer this.mutex.Unlock()
-
-	if this.closed {
-		return
+func (this *SafeTask) Close() error {
+	if this == nil {
+		return nil
+	} else if atomic.CompareAndSwapUint32(&this.state, 0, 1) {
+		return this.Task.Close()
+	} else {
+		panic("task already closed")
 	}
-
-	for _, item := range this.active {
-		item.Close()
-	}
-
-	this.closed = true
-	this.active = nil
 }
-func (this *ConcurrentScheduler) isClosed() bool {
-	this.mutex.Lock()
-	defer this.mutex.Unlock()
-	return this.closed
+func (this *SafeTask) Listen() {
+	this.Task.Listen()
+	atomic.CompareAndSwapUint32(&this.state, 0, 2)
+}
+func (this *SafeTask) IsSafe() bool {
+	return this == nil || atomic.LoadUint32(&this.state) != 2
 }
