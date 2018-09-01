@@ -59,10 +59,7 @@ func (this *ConcurrentScheduler) runTask(task Task, previous io.Closer) {
 		return
 	}
 
-	if previous != nil {
-		go previous.Close() // go vs inline?
-	}
-
+	this.closeTask(previous)
 	task.Listen()
 
 	// TODO: if this exits early: this.shutdown <- struct{}{}
@@ -87,13 +84,19 @@ func (this *ConcurrentScheduler) appendActive(item io.Closer) (previous io.Close
 	return previous
 }
 func (this *ConcurrentScheduler) closeTask(task io.Closer) {
+	if task == nil {
+		return
+	}
+
 	task.Close()
 
 	this.mutex.Lock()
 	defer this.mutex.Unlock()
 
-	if len(this.active) > 0 {
-		this.active = this.active[:len(this.active)-1] // remove the last item
+	for i, item := range this.active {
+		if item == task {
+			this.active = append(this.active[:i], this.active[i+1:]...)
+		}
 	}
 }
 
