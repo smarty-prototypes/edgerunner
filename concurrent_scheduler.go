@@ -31,34 +31,29 @@ func (this *ConcurrentScheduler) Schedule() error {
 	this.waiter.Wait()
 	return this.err
 }
-
 func (this *ConcurrentScheduler) schedule() bool {
-	current := this.factory()
-	previous := this.addTask(current)
-	go this.runTask(previous, current)
+	go this.runTask(this.newTask())
 	return this.reader.Read()
 }
-
-func (this *ConcurrentScheduler) addTask(item io.Closer) io.Closer {
+func (this *ConcurrentScheduler) newTask() (io.Closer, Task) {
 	this.waiter.Add(1)
+	item := this.factory()
 
 	this.mutex.Lock()
 	defer this.mutex.Unlock()
 
 	this.active = append(this.active, item)
-
 	if len(this.active) > 1 {
-		return this.active[0]
+		return this.active[0], item
 	} else {
-		return nil
+		return nil, item
 	}
 }
-
 func (this *ConcurrentScheduler) runTask(previous io.Closer, current Task) {
 	defer this.waiter.Done()
 
 	if this.storeError(current.Init()) {
-		this.closeTask(current) // current one failed to start, close it
+		this.closeTask(current) // current one failed to start, mark it as closed
 	} else {
 		this.closeTask(previous)
 		current.Listen()
@@ -70,7 +65,7 @@ func (this *ConcurrentScheduler) closeTask(task io.Closer) {
 		return
 	}
 
-	task.Close() // go close?
+	go task.Close() // mark as closed in the background
 
 	this.mutex.Lock()
 	defer this.mutex.Unlock()
@@ -81,7 +76,6 @@ func (this *ConcurrentScheduler) closeTask(task io.Closer) {
 		}
 	}
 }
-
 func (this *ConcurrentScheduler) closeAll() {
 	this.mutex.Lock()
 	defer this.mutex.Unlock()
