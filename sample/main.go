@@ -57,7 +57,7 @@ func NewSimpleTask() edgerunner.Task {
 func (this *SimpleTask) Init() error {
 	log.Printf("%d initializing...", this.id)
 	this.waiter.Add(1)
-	time.Sleep(time.Second)
+	time.Sleep(time.Second / 2)
 
 	if this.id%2 == 0 {
 		log.Printf("%d initialized FAILED", this.id)
@@ -76,7 +76,7 @@ func (this *SimpleTask) Listen() {
 
 func (this *SimpleTask) Close() error {
 	log.Printf("%d closing...", this.id)
-	time.Sleep(time.Millisecond * 2000)
+	time.Sleep(time.Second / 2)
 	this.waiter.Done()
 	log.Printf("%d marked as closed", this.id)
 	return nil
