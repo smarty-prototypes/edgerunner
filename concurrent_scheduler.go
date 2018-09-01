@@ -1,6 +1,7 @@
 package edgerunner
 
 import (
+	"io"
 	"sync"
 	"sync/atomic"
 )
@@ -11,7 +12,7 @@ type ConcurrentScheduler struct {
 	waiter   *sync.WaitGroup
 	startup  chan error
 	shutdown chan struct{}
-	head     *ConcurrentTask
+	head     io.Closer
 	err      error
 }
 
@@ -26,22 +27,25 @@ func NewConcurrentScheduler(reader SignalReader, factory TaskFactory) *Concurren
 }
 
 func (this *ConcurrentScheduler) Schedule() error {
-	go func() {
-		for this.schedule() {
-		}
-
-		this.shutdown <- struct{}{} // signal the shutdown channel that we're ready to close
-	}()
-
+	go this.scheduleTasks()
 	<-this.shutdown
-	this.cleanup()
+	this.head.Close()
+	this.waiter.Wait()
+	close(this.shutdown)
+	close(this.startup)
 	return this.err
 }
-func (this *ConcurrentScheduler) schedule() bool {
+func (this *ConcurrentScheduler) scheduleTasks() {
+	for this.scheduleNextTask() {
+	}
+
+	this.shutdown <- struct{}{} // signal the shutdown channel that we're ready to close
+}
+func (this *ConcurrentScheduler) scheduleNextTask() bool {
 	this.waiter.Add(1)
 
-	proposed := &ConcurrentTask{Task: this.factory(), signal: this.shutdown}
-	go this.runTask(proposed, this.head)
+	proposed, previous := &ConcurrentTask{Task: this.factory(), shutdown: this.shutdown}, this.head
+	go this.runTask(proposed, previous)
 
 	if this.err = <-this.startup; this.err != nil {
 		proposed.Close()
@@ -52,10 +56,10 @@ func (this *ConcurrentScheduler) schedule() bool {
 	return this.reader.Read()
 }
 
-func (this *ConcurrentScheduler) runTask(proposed, previous Task) {
+func (this *ConcurrentScheduler) runTask(proposed Task, previous io.Closer) {
 	defer this.waiter.Done()
 	if this.initializeTask(proposed) {
-		previous.Close() // note: semi-concurrent = previous.Close(), fully concurrent = go previous.Close()
+		previous.Close()
 		proposed.Listen()
 	}
 }
@@ -65,29 +69,22 @@ func (this *ConcurrentScheduler) initializeTask(task Task) bool {
 	return err == nil
 }
 
-func (this *ConcurrentScheduler) cleanup() {
-	this.head.Close()
-	this.waiter.Wait()
-	close(this.shutdown)
-	close(this.startup)
-}
-
 ///////////////////////////////////////////////////////////////////////
 
 type ConcurrentTask struct {
 	Task
-	signal chan struct{}
-	state  uint32
+	shutdown chan struct{}
+	clean    uint32
 }
 
 func (this *ConcurrentTask) Listen() {
 	this.Task.Listen()
-	if !atomic.CompareAndSwapUint32(&this.state, 1, 2) {
-		this.signal <- struct{}{} // didn't shutdown cleanly
+	if atomic.LoadUint32(&this.clean) == 0 {
+		this.shutdown <- struct{}{} // didn't shutdown cleanly
 	}
 }
 func (this *ConcurrentTask) Close() error {
-	if this != nil && atomic.CompareAndSwapUint32(&this.state, 0, 1) {
+	if this != nil && atomic.CompareAndSwapUint32(&this.clean, 0, 1) {
 		return this.Task.Close()
 	}
 
