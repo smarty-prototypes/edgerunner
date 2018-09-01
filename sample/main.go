@@ -76,7 +76,7 @@ func (this *SimpleTask) Listen() {
 
 func (this *SimpleTask) Close() error {
 	log.Printf("%d closing...", this.id)
-	time.Sleep(time.Millisecond * 500)
+	time.Sleep(time.Millisecond * 1000)
 	this.waiter.Done()
 	log.Printf("%d marked as closed", this.id)
 	return nil

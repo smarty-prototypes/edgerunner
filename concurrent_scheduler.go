@@ -32,21 +32,27 @@ func (this *ConcurrentScheduler) Schedule() error {
 	return this.err
 }
 func (this *ConcurrentScheduler) schedule() bool {
-	go this.runTask(this.newTask())
+	previous, current := this.newTask()
+	go this.runTask(previous, current)
 	return this.reader.Read()
 }
 func (this *ConcurrentScheduler) newTask() (io.Closer, Task) {
 	this.waiter.Add(1)
-	item := this.factory()
+	task := this.factory()
 
 	this.mutex.Lock()
 	defer this.mutex.Unlock()
 
-	this.active = append(this.active, item)
-	if len(this.active) > 1 {
-		return this.active[0], item
+	previous := this.previousTask()
+	this.active = append(this.active, task)
+	return previous, task
+
+}
+func (this *ConcurrentScheduler) previousTask() io.Closer {
+	if len(this.active) > 0 {
+		return this.active[len(this.active)-1]
 	} else {
-		return nil, item
+		return nil
 	}
 }
 func (this *ConcurrentScheduler) runTask(previous io.Closer, current Task) {
