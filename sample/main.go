@@ -11,13 +11,12 @@ import (
 )
 
 func main() {
-	runner := edgerunner.NewRunner(edgerunner.NewSignaler(), newScheduler)
-	watcher := edgerunner.NewSignalWatcher(runner)
-	go watcher.Listen()
-
-	runner.Start()
+	newRunner().Start()
 }
-
+func newRunner() edgerunner.Runner {
+	runner := edgerunner.NewRunner(edgerunner.NewSignaler(), newScheduler)
+	return edgerunner.NewSignalRunner(runner, edgerunner.DefaultReloadSignals, edgerunner.DefaultCloseSignals)
+}
 func newScheduler(reader edgerunner.SignalReader) edgerunner.Scheduler {
 	return edgerunner.NewConcurrentScheduler(reader, NewSimpleTask)
 }
@@ -49,13 +48,11 @@ func (this *SimpleTask) Init() error {
 	log.Printf("%d initialized", this.id)
 	return nil
 }
-
 func (this *SimpleTask) Listen() {
 	log.Printf("%d listening...", this.id)
 	this.waiter.Wait()
 	log.Printf("%d listen completed", this.id)
 }
-
 func (this *SimpleTask) Close() error {
 	log.Printf("%d closing...", this.id)
 	time.Sleep(time.Second / 2)
