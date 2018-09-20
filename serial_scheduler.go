@@ -22,15 +22,15 @@ func (this *SerialScheduler) Schedule() error {
 	return this.err
 }
 func (this *SerialScheduler) scheduleTask() bool {
-	this.resetScheduleAgain()
+	this.resetScheduleAgainState()
 
 	task := this.factory()
 	go this.watchSignal(task)
 
 	if this.err = task.Init(); this.err != nil {
-		return false // task.Close() will be called when a signal arrives or the reader closes
+		return false // task.Close() will be called when a signal arrives or the signal reader closes
 	} else {
-		task.Listen() // we only schedule again if listen exits correctly
+		task.Listen() // we only schedule again if listen exits correctly/cleanly and a reload signal was received
 	}
 
 	return this.canScheduleAgain()
@@ -41,7 +41,7 @@ func (this *SerialScheduler) watchSignal(task Task) {
 	this.scheduleAgain(reload && err == nil)
 }
 
-func (this *SerialScheduler) resetScheduleAgain() {
+func (this *SerialScheduler) resetScheduleAgainState() {
 	atomic.StoreUint32(&this.again, 0)
 }
 func (this *SerialScheduler) canScheduleAgain() bool {

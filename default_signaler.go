@@ -19,7 +19,7 @@ func (this *DefaultSignaler) Start() (SignalReader, bool) {
 		this.signals = make(chan struct{}, 2) // buffered channel
 		return DefaultSignalReader{channel: this.signals}, true
 	} else {
-		return DefaultSignalReader{channel: this.signals}, false
+		return nil, false
 	}
 }
 func (this *DefaultSignaler) Stop() {
@@ -51,7 +51,6 @@ func (this *DefaultSignaler) Signal() bool {
 type DefaultSignalReader struct{ channel <-chan struct{} }
 
 func (this DefaultSignalReader) Read() bool {
-	// TODO: drain the channel completely on this read operation
-	_, ok := <-this.channel
-	return ok
+	_, channelStillOpen := <-this.channel
+	return channelStillOpen // TODO: drain the channel completely on this read operation
 }
