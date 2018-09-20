@@ -2,13 +2,9 @@ package main
 
 import (
 	"errors"
-	"fmt"
 	"log"
-	"os"
-	"os/signal"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/smartystreets/edgerunner"
@@ -16,22 +12,8 @@ import (
 
 func main() {
 	runner := edgerunner.NewRunner(edgerunner.NewSignaler(), newScheduler)
-
-	go func() {
-		signals := make(chan os.Signal, 16)
-		signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
-		fmt.Println("\nSignal received:", <-signals)
-		runner.Stop()
-	}()
-
-	go func() {
-		signals := make(chan os.Signal, 16)
-		signal.Notify(signals, syscall.SIGHUP)
-		for message := range signals {
-			fmt.Println("\nSignal received:", message)
-			runner.Reload()
-		}
-	}()
+	watcher := edgerunner.NewSignalWatcher(runner)
+	go watcher.Listen()
 
 	runner.Start()
 }
