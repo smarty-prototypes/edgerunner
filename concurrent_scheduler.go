@@ -11,7 +11,7 @@ type ConcurrentScheduler struct {
 	waiter   *sync.WaitGroup
 	startup  chan error
 	shutdown chan struct{}
-	head     *concurrentTask
+	head     *safeTask
 	err      error
 }
 
@@ -43,7 +43,7 @@ func (this *ConcurrentScheduler) scheduleTasks() {
 func (this *ConcurrentScheduler) scheduleNextTask() bool {
 	this.waiter.Add(1)
 
-	proposed, previous := &concurrentTask{Task: this.factory(), shutdown: this.shutdown}, this.head
+	proposed, previous := newSafeTask(this.factory(), this.shutdown), this.head
 	go this.runTask(proposed, previous)
 
 	if this.err = <-this.startup; this.err != nil {
@@ -55,7 +55,7 @@ func (this *ConcurrentScheduler) scheduleNextTask() bool {
 	return this.reader.Read()
 }
 
-func (this *ConcurrentScheduler) runTask(proposed, previous *concurrentTask) {
+func (this *ConcurrentScheduler) runTask(proposed, previous *safeTask) {
 	defer this.waiter.Done()
 	if this.initializeTask(proposed) {
 		previous.Close()
@@ -70,19 +70,23 @@ func (this *ConcurrentScheduler) initializeTask(task Task) bool {
 
 ///////////////////////////////////////////////////////////////////////
 
-type concurrentTask struct {
+type safeTask struct {
 	Task
-	shutdown chan struct{}
+	shutdown chan<- struct{}
 	clean    uint32
 }
 
-func (this *concurrentTask) Listen() {
+func newSafeTask(inner Task, shutdown chan<- struct{}) *safeTask {
+	return &safeTask{Task: inner, shutdown: shutdown}
+}
+
+func (this *safeTask) Listen() {
 	this.Task.Listen()
 	if atomic.LoadUint32(&this.clean) == 0 {
 		this.shutdown <- struct{}{} // didn't shutdown cleanly
 	}
 }
-func (this *concurrentTask) Close() error {
+func (this *safeTask) Close() error {
 	if this != nil && atomic.CompareAndSwapUint32(&this.clean, 0, 1) {
 		return this.Task.Close()
 	}
