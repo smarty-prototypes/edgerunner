@@ -24,7 +24,7 @@ func NewSignalRunner(inner Runner, reload, terminate []os.Signal) *SignalRunner 
 		all:    append(reload, terminate...),
 	}
 }
-func sliceToMap(slice []os.Signal) (map[os.Signal]bool) {
+func sliceToMap(slice []os.Signal) map[os.Signal]bool {
 	output := make(map[os.Signal]bool, len(slice))
 
 	for _, item := range slice {
