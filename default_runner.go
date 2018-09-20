@@ -10,7 +10,7 @@ func NewRunner(signaler Signaler, factory SchedulerFactory) Runner {
 }
 
 func (this *DefaultRunner) Start() error {
-	if reader, started := this.signaler.Start(); started {
+	if reader := this.signaler.Start(); reader != nil {
 		defer this.signaler.Stop()
 		scheduler := this.factory(reader)
 		return scheduler.Schedule()

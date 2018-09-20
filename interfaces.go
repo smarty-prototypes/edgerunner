@@ -24,7 +24,7 @@ type (
 
 type (
 	Signaler interface {
-		Start() (SignalReader, bool)
+		Start() SignalReader
 		Stop()
 		Signal() bool
 	}
