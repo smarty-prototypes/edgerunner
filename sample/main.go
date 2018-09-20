@@ -11,14 +11,8 @@ import (
 )
 
 func main() {
-	newRunner().Start()
-}
-func newRunner() edgerunner.Runner {
-	runner := edgerunner.NewRunner(edgerunner.NewSignaler(), newScheduler)
-	return edgerunner.NewSignalRunner(runner, edgerunner.DefaultReloadSignals, edgerunner.DefaultCloseSignals)
-}
-func newScheduler(reader edgerunner.SignalReader) edgerunner.Scheduler {
-	return edgerunner.NewConcurrentScheduler(reader, NewSimpleTask)
+	runner := edgerunner.Configure(NewSimpleTask, edgerunner.Concurrent())
+	runner.Start()
 }
 
 /////////////////////////////////////////////////////////////////

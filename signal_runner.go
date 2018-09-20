@@ -87,4 +87,4 @@ func (this *SignalRunner) listen(input <-chan os.Signal) {
 }
 
 var DefaultReloadSignals = []os.Signal{syscall.SIGHUP}
-var DefaultCloseSignals = []os.Signal{syscall.SIGINT, syscall.SIGTERM, os.Interrupt}
+var DefaultShutdownSignals = []os.Signal{syscall.SIGINT, syscall.SIGTERM, os.Interrupt}
