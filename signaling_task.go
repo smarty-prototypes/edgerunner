@@ -3,15 +3,15 @@ package edgerunner
 type SignalingTask struct {
 	inner      Task
 	initialize chan<- error
-	listen     chan<- bool
+	shutdown   chan<- struct{}
 	closer     chan struct{}
 }
 
-func NewSignalingTask(inner Task, initialize chan<- error, listen chan<- bool) *SignalingTask {
+func NewSignalingTask(inner Task, initialize chan<- error, shutdown chan<- struct{}) *SignalingTask {
 	return &SignalingTask{
 		inner:      inner,
 		initialize: initialize,
-		listen:     listen,
+		shutdown:   shutdown,
 		closer:     make(chan struct{}, 2),
 	}
 }
@@ -21,13 +21,22 @@ func (this *SignalingTask) Init() error {
 	this.initialize <- err
 	return err
 }
+
 func (this *SignalingTask) Listen() {
 	this.inner.Listen()
-	select {
-	case _, open := <-this.closer:
-		this.listen <- !open // only succeed if closed properly
+	if this.isOpen() {
+		this.shutdown <- struct{}{}
 	}
 }
+func (this *SignalingTask) isOpen() bool {
+	select {
+	case _, open := <-this.closer:
+		return open
+	default:
+		return true
+	}
+}
+
 func (this *SignalingTask) Close() error {
 	close(this.closer)
 	return this.inner.Close()
