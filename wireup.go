@@ -49,6 +49,7 @@ type wireupState struct {
 	terminate   []os.Signal
 	concurrency int
 }
+
 func (this *wireupState) Scheduler(reader SignalReader, factory TaskFactory) Scheduler {
 	switch this.concurrency {
 	case 2:
@@ -61,4 +62,3 @@ func (this *wireupState) Scheduler(reader SignalReader, factory TaskFactory) Sch
 		panic("concurrency level not supported")
 	}
 }
-
