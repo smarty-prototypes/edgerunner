@@ -2,7 +2,6 @@ package edgerunner
 
 import (
 	"sync"
-	"sync/atomic"
 )
 
 type ConcurrentScheduler struct {
@@ -11,7 +10,7 @@ type ConcurrentScheduler struct {
 	waiter   *sync.WaitGroup
 	startup  chan error
 	shutdown chan struct{}
-	head     *safeTask
+	head     *SignalingTask
 	err      error
 }
 
@@ -43,7 +42,7 @@ func (this *ConcurrentScheduler) scheduleTasks() {
 func (this *ConcurrentScheduler) scheduleNextTask() bool {
 	this.waiter.Add(1)
 
-	proposed, previous := newSafeTask(this.factory(), this.shutdown), this.head
+	proposed, previous := NewSignalingTask(this.factory(), this.startup, this.shutdown), this.head
 	go this.runTask(proposed, previous)
 
 	if this.err = <-this.startup; this.err != nil {
@@ -52,44 +51,18 @@ func (this *ConcurrentScheduler) scheduleNextTask() bool {
 		this.head = proposed
 	}
 
-	return this.reader.Read()
+	return this.reader.Read() // wait for some kind of signal
 }
 
-func (this *ConcurrentScheduler) runTask(proposed, previous *safeTask) {
+func (this *ConcurrentScheduler) runTask(proposed, previous *SignalingTask) {
 	defer this.waiter.Done()
-	if this.initializeTask(proposed) {
+	if proposed.Init() != nil {
+		return
+	}
+
+	if previous != nil {
 		previous.Close()
-		proposed.Listen()
-	}
-}
-func (this *ConcurrentScheduler) initializeTask(task Task) bool {
-	err := task.Init()
-	this.startup <- err
-	return err == nil
-}
-
-///////////////////////////////////////////////////////////////////////
-
-type safeTask struct {
-	Task
-	shutdown chan<- struct{}
-	clean    uint32
-}
-
-func newSafeTask(inner Task, shutdown chan<- struct{}) *safeTask {
-	return &safeTask{Task: inner, shutdown: shutdown}
-}
-
-func (this *safeTask) Listen() {
-	this.Task.Listen()
-	if atomic.LoadUint32(&this.clean) == 0 {
-		this.shutdown <- struct{}{} // didn't shutdown cleanly
-	}
-}
-func (this *safeTask) Close() error {
-	if this != nil && atomic.CompareAndSwapUint32(&this.clean, 0, 1) {
-		return this.Task.Close()
 	}
 
-	return nil
+	proposed.Listen()
 }

@@ -8,7 +8,7 @@ type DefaultScheduler struct {
 	waiter   *sync.WaitGroup
 	startup  chan error
 	shutdown chan struct{}
-	head     *safeTask
+	head     *SignalingTask
 	err      error
 }
 
@@ -39,7 +39,7 @@ func (this *DefaultScheduler) scheduleTasks() {
 func (this *DefaultScheduler) scheduleNextTask() bool {
 	this.waiter.Add(1)
 
-	proposed := newSafeTask(this.factory(), this.shutdown)
+	proposed := NewSignalingTask(this.factory(), this.startup, this.shutdown)
 	go this.runTask(proposed, this.head)
 
 	if this.err = <-this.startup; this.err != nil {
@@ -50,7 +50,7 @@ func (this *DefaultScheduler) scheduleNextTask() bool {
 
 	return this.reader.Read()
 }
-func (this *DefaultScheduler) runTask(proposed, previous *safeTask) {
+func (this *DefaultScheduler) runTask(proposed, previous *SignalingTask) {
 	// TODO
 }
 
