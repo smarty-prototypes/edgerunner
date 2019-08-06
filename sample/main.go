@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/smartystreets/edgerunner"
+	"github.com/smartystreets-prototypes/edgerunner"
 )
 
 func main() {
