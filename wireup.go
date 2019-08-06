@@ -37,7 +37,7 @@ func Sequential() Option {
 }
 func Semiconcurrent() Option {
 	panic("not yet supported")
-	return func(this *wireupState) { this.concurrency = 1 }
+	// return func(this *wireupState) { this.concurrency = 1 }
 }
 func Concurrent() Option {
 	return func(this *wireupState) { this.concurrency = 2 }

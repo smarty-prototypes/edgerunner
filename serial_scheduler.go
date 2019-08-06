@@ -29,10 +29,9 @@ func (this *SerialScheduler) scheduleTask() bool {
 
 	if this.err = task.Init(); this.err != nil {
 		return false // task.Close() will be called when a signal arrives or the signal reader closes
-	} else {
-		task.Listen() // we only schedule again if listen exits correctly/cleanly and a reload signal was received
 	}
 
+	task.Listen() // we only schedule again if listen exits correctly/cleanly and a reload signal was received
 	return this.canScheduleAgain()
 }
 func (this *SerialScheduler) watchSignal(task Task) {

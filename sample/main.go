@@ -12,7 +12,7 @@ import (
 
 func main() {
 	runner := edgerunner.Configure(NewSimpleTask, edgerunner.Concurrent())
-	runner.Start()
+	_ = runner.Start()
 }
 
 /////////////////////////////////////////////////////////////////
