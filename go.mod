@@ -1,3 +1,3 @@
 module github.com/smartystreets-prototypes/edgerunner
 
-go 1.12
+go 1.13
